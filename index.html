@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Data API call example</title>
+    <script>
+      // Check if the bridge is available
+		if (typeof window.fsmHost !== 'undefined' && typeof window.fsmHost.postMessage === 'function') {
+			
+			// Set up response listener
+			window.addEventListener('fsmHostResponse', (event) => {
+				const response = event.detail;
+				if (response.success && response.command === 'CONTEXT_RESPONSE') {
+					console.log('User:', response.payload.user);
+					console.log('Company:', response.payload.selected_company_name);
+				}
+			});
+			
+			// Send a context request
+			const request = {
+				apiVersion: 1,
+				apiKey: 'your-api-key',  // Required if Authentication Key is configured on Web Container
+				requestId: 'context-' + Date.now(),
+				command: 'CONTEXT_REQUEST',
+				payload: {}
+			};
+			window.fsmHost.postMessage(JSON.stringify(request));
+			
+		} else {
+			console.log('Bridge not available — running outside mobile app');
+		}
+
+    </script>
+  </head>
+  <body>
+    <h1>Example of Data API call</h1>
+    <h3>Open the console of your browser to see the result.</h3>
+  </body>
+</html>
