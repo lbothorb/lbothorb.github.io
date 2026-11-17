@@ -1,41 +1,98 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Data API call example</title>
-    <script>
-      // Check if the bridge is available
-		if (typeof window.fsmHost !== 'undefined' && typeof window.fsmHost.postMessage === 'function') {
-			
-			// Set up response listener
-			window.addEventListener('fsmHostResponse', (event) => {
-				const response = event.detail;
-				if (response.success && response.command === 'CONTEXT_RESPONSE') {
-					console.log('User:', response.payload.user);
-					console.log('Company:', response.payload.selected_company_name);
-				}
-			});
-			
-			// Send a context request
-			const request = {
-				apiVersion: 1,
-				apiKey: 'your-api-key',  // Required if Authentication Key is configured on Web Container
-				requestId: 'context-' + Date.now(),
-				command: 'CONTEXT_REQUEST',
-				payload: {}
-			};
-			window.fsmHost.postMessage(JSON.stringify(request));
-			
-		} else {
-			console.log('Bridge not available — running outside mobile app');
-		}
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FSM Context API Test</title>
 
+    <style>
+        body {
+            font-family: -apple-system, Arial, sans-serif;
+            padding: 20px;
+        }
+
+        #output {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            background: #f5f5f5;
+            white-space: pre-wrap;
+        }
+
+        button {
+            padding: 12px 16px;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>FSM Context API Test</h1>
+
+    <button id="getContextBtn">Get Context</button>
+
+    <div id="output">Waiting...</div>
+
+    <script>
+        const output = document.getElementById('output');
+
+        function log(message) {
+            console.log(message);
+            output.textContent += '\n' + message;
+        }
+
+        document.getElementById('getContextBtn').addEventListener('click', () => {
+
+            output.textContent = '';
+
+            if (
+                typeof window.fsmHost !== 'undefined' &&
+                typeof window.fsmHost.postMessage === 'function'
+            ) {
+
+                log('✅ FSM Bridge detected');
+
+                window.addEventListener(
+                    'fsmHostResponse',
+                    (event) => {
+                        const response = event.detail;
+
+                        log('Response received:');
+                        log(JSON.stringify(response, null, 2));
+
+                        if (
+                            response.success &&
+                            response.command === 'CONTEXT_RESPONSE'
+                        ) {
+                            log('');
+                            log('User: ' + response.payload.user);
+                            log(
+                                'Company: ' +
+                                response.payload.selected_company_name
+                            );
+                        }
+                    },
+                    { once: true }
+                );
+
+                const request = {
+                    apiVersion: 1,
+                    apiKey: 'your-api-key',
+                    requestId: 'context-' + Date.now(),
+                    command: 'CONTEXT_REQUEST',
+                    payload: {}
+                };
+
+                log('Sending request...');
+                window.fsmHost.postMessage(JSON.stringify(request));
+
+            } else {
+
+                log('❌ FSM Bridge not available');
+                log('This page is running in Safari/GitHub Pages and not inside the FSM mobile app.');
+            }
+        });
     </script>
-  </head>
-  <body>
-    <h1>Example of Data API call</h1>
-    <h3>Open the console of your browser to see the result.</h3>
-  </body>
+
+</body>
 </html>
