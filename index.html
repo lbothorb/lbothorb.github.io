@@ -3,96 +3,417 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FSM Context API Test</title>
+    <title>FSM Offline Photo Test</title>
 
     <style>
         body {
-            font-family: -apple-system, Arial, sans-serif;
+            font-family: Arial, sans-serif;
             padding: 20px;
         }
 
-        #output {
-            margin-top: 20px;
-            padding: 10px;
-            border: 1px solid #ccc;
-            background: #f5f5f5;
-            white-space: pre-wrap;
+        button {
+            margin: 5px;
+            padding: 10px 15px;
         }
 
-        button {
-            padding: 12px 16px;
-            font-size: 16px;
+        #log {
+            margin-top: 20px;
+            border: 1px solid #ccc;
+            padding: 10px;
+            background: #f5f5f5;
+            white-space: pre-wrap;
         }
     </style>
 </head>
 <body>
 
-    <h1>FSM Context API Test</h1>
+<h2>FSM Offline Photo Test</h2>
 
-    <button id="getContextBtn">Get Context</button>
+<input type="file" id="photoInput" accept="image/*">
 
-    <div id="output">Waiting...</div>
+<br><br>
 
-    <script>
-        const output = document.getElementById('output');
+<button id="btnInit">
+    Initialize
+</button>
 
-        function log(message) {
-            console.log(message);
-            output.textContent += '\n' + message;
-        }
+<button id="btnLoadActivity">
+    Load Activity
+</button>
 
-        document.getElementById('getContextBtn').addEventListener('click', () => {
+<button id="btnAddPhoto">
+    Add Photo
+</button>
 
-            output.textContent = '';
+<div id="log"></div>
 
-            if (
-                typeof window.fsmHost !== 'undefined' &&
-                typeof window.fsmHost.postMessage === 'function'
-            ) {
+<script>
 
-                log('✅ FSM Bridge detected');
+const logArea = document.getElementById("log");
 
-                window.addEventListener(
-                    'fsmHostResponse',
-                    (event) => {
-                        const response = event.detail;
+function log(message) {
+    console.log(message);
+    logArea.textContent += "\n" + message;
+}
 
-                        log('Response received:');
-                        log(JSON.stringify(response, null, 2));
+let currentContext = null;
+let currentActivity = null;
 
-                        if (
-                            response.success &&
-                            response.command === 'CONTEXT_RESPONSE'
-                        ) {
-                            log('');
-                            log('User: ' + response.payload.user);
-                            log(
-                                'Company: ' +
-                                response.payload.selected_company_name
-                            );
-                        }
-                    },
-                    { once: true }
+/**
+ * Generic Bridge Request
+ */
+function sendBridgeRequest(command, payload = {}) {
+    return new Promise((resolve, reject) => {
+
+        const requestId =
+            command + "-" + Date.now();
+
+        function listener(event) {
+
+            const response = event.detail;
+
+            if (response.requestId === requestId) {
+
+                window.removeEventListener(
+                    "fsmHostResponse",
+                    listener
                 );
 
-                const request = {
-                    apiVersion: 1,
-                    apiKey: 'your-api-key',
-                    requestId: 'context-' + Date.now(),
-                    command: 'CONTEXT_REQUEST',
-                    payload: {}
-                };
-
-                log('Sending request...');
-                window.fsmHost.postMessage(JSON.stringify(request));
-
-            } else {
-
-                log('❌ FSM Bridge not available');
-                log('This page is running in Safari/GitHub Pages and not inside the FSM mobile app.');
+                if (response.success) {
+                    resolve(response);
+                } else {
+                    reject(response);
+                }
             }
-        });
-    </script>
+        }
+
+        window.addEventListener(
+            "fsmHostResponse",
+            listener
+        );
+
+        const request = {
+            apiVersion: 1,
+            apiKey: "your-api-key",
+            requestId,
+            command,
+            payload
+        };
+
+        window.fsmHost.postMessage(
+            JSON.stringify(request)
+        );
+    });
+}
+
+/**
+ * Convert image blob to Base64
+ */
+function blobToBase64(blob) {
+
+    return new Promise((resolve, reject) => {
+
+        const reader = new FileReader();
+
+        reader.onload = () => {
+            resolve(
+                reader.result.split(",")[1]
+            );
+        };
+
+        reader.onerror = reject;
+
+        reader.readAsDataURL(blob);
+
+    });
+
+}
+
+/**
+ * Initialize App
+ */
+async function initializeApp() {
+
+    try {
+
+        if (
+            typeof window.fsmHost === "undefined"
+        ) {
+            throw new Error(
+                "FSM Bridge not available"
+            );
+        }
+
+        const response =
+            await sendBridgeRequest(
+                "CONTEXT_REQUEST",
+                {}
+            );
+
+        currentContext =
+            response.payload;
+
+        localStorage.setItem(
+            "fsm-context",
+            JSON.stringify(currentContext)
+        );
+
+        log(
+            "✅ Context loaded"
+        );
+
+        log(
+            "User: " +
+            currentContext.user
+        );
+
+        log(
+            "Company: " +
+            currentContext.selected_company_name
+        );
+
+    }
+    catch (err) {
+
+        const cached =
+            localStorage.getItem(
+                "fsm-context"
+            );
+
+        if (cached) {
+
+            currentContext =
+                JSON.parse(cached);
+
+            log(
+                "⚠ Using cached context"
+            );
+
+        } else {
+
+            log(
+                "❌ No context available"
+            );
+        }
+    }
+}
+
+/**
+ * Load Activity
+ */
+async function loadActivity() {
+
+    try {
+
+        let activityId =
+            currentContext?.business_object?.id;
+
+        if (!activityId) {
+
+            activityId =
+                prompt(
+                    "Enter Activity ID"
+                );
+        }
+
+        const response =
+            await sendBridgeRequest(
+                "ACTIVITY_GET",
+                {
+                    id: activityId
+                }
+            );
+
+        currentActivity =
+            response.payload;
+
+        localStorage.setItem(
+            "activity-" + activityId,
+            JSON.stringify(currentActivity)
+        );
+
+        log(
+            "✅ Activity loaded"
+        );
+
+        log(
+            JSON.stringify(
+                currentActivity,
+                null,
+                2
+            )
+        );
+
+    }
+    catch (err) {
+
+        log(
+            "⚠ Activity load failed. Trying cache."
+        );
+
+        const keys =
+            Object.keys(localStorage)
+                .filter(
+                    k => k.startsWith("activity-")
+                );
+
+        if (keys.length > 0) {
+
+            currentActivity =
+                JSON.parse(
+                    localStorage.getItem(
+                        keys[0]
+                    )
+                );
+
+            log(
+                "✅ Activity restored from cache"
+            );
+
+        }
+    }
+}
+
+/**
+ * Add Photo to Activity
+ */
+async function addPhotoToActivity() {
+
+    try {
+
+        if (!currentActivity) {
+            alert(
+                "Load activity first"
+            );
+            return;
+        }
+
+        const file =
+            document
+                .getElementById("photoInput")
+                .files[0];
+
+        if (!file) {
+            alert(
+                "Select a photo"
+            );
+            return;
+        }
+
+        const base64 =
+            await blobToBase64(file);
+
+        const response =
+            await sendBridgeRequest(
+                "ATTACHMENT_ADD",
+                {
+                    fileName:
+                        file.name,
+                    fileContent:
+                        base64,
+                    object: {
+                        objectId:
+                            currentActivity.id,
+                        objectType:
+                            "ACTIVITY"
+                    },
+                    title:
+                        "Offline Test Photo"
+                }
+            );
+
+        const attachmentId =
+            response.payload.id;
+
+        log(
+            "✅ Attachment created"
+        );
+
+        log(
+            "Attachment ID: " +
+            attachmentId
+        );
+
+    }
+    catch (err) {
+
+        log(
+            "❌ Attachment upload failed"
+        );
+
+        log(
+            JSON.stringify(
+                err,
+                null,
+                2
+            )
+        );
+    }
+
+}
+
+/**
+ * Restore Cached Form Data
+ */
+function restorePendingChanges() {
+
+    const pending =
+        localStorage.getItem(
+            "pendingForm"
+        );
+
+    if (pending) {
+
+        log(
+            "⚠ Pending changes restored"
+        );
+
+        return JSON.parse(
+            pending
+        );
+    }
+
+    return null;
+}
+
+/**
+ * Save Form Data Locally
+ */
+function saveDraft(data) {
+
+    localStorage.setItem(
+        "pendingForm",
+        JSON.stringify(data)
+    );
+
+    log(
+        "Draft saved locally"
+    );
+
+}
+
+document
+    .getElementById("btnInit")
+    .addEventListener(
+        "click",
+        initializeApp
+    );
+
+document
+    .getElementById("btnLoadActivity")
+    .addEventListener(
+        "click",
+        loadActivity
+    );
+
+document
+    .getElementById("btnAddPhoto")
+    .addEventListener(
+        "click",
+        addPhotoToActivity
+    );
+
+</script>
 
 </body>
 </html>
