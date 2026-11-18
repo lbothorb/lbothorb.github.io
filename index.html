@@ -5,6 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FSM Activity Photo Upload</title>
 
+    <script>
+    if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.register("./sw.js")
+            .then(() => console.log("Service Worker registered"))
+            .catch(err => console.error(err));
+    }
+    </script>
+
     <style>
         body {
             font-family: Arial, sans-serif;
