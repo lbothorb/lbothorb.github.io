@@ -1,32 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FSM Activity Photo Upload</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 800px;
+        }
+
+        input,
+        button {
+            padding: 10px;
+            margin: 5px 0;
+        }
+
+        button {
+            cursor: pointer;
+        }
+
+        #activityInfo {
+            margin-top: 15px;
+            border: 1px solid #ddd;
+            padding: 15px;
+            background: #f7f7f7;
+            border-radius: 4px;
+        }
+
+        .success {
+            color: green;
+        }
+
+        .error {
+            color: red;
+        }
+
+        #status {
+            margin-top: 15px;
+            font-weight: bold;
+        }
+    </style>
+</head>
 <body>
 
+<h2>FSM Activity Photo Upload</h2>
+
+<label for="activityId">
+    Activity ID
+</label>
+<br>
+
+<input
+    type="text"
+    id="activityId"
+    placeholder="Activity ID">
+
+<button id="loadActivityBtn">
+    Load Activity
+</button>
+
+<div id="activityInfo">
+    No activity loaded.
+</div>
+
+<br>
+
+<input
+    type="file"
+    id="photoInput"
+    accept="image/*">
+
+<button id="uploadBtn">
+    Upload Photo
+</button>
+
+<div id="status"></div>
+
 <script>
-    
-// Check if the bridge is available
-if (typeof window.fsmHost !== 'undefined' && typeof window.fsmHost.postMessage === 'function') {
-    
-    // Set up response listener
-    window.addEventListener('fsmHostResponse', (event) => {
-        const response = event.detail;
-        if (response.success && response.command === 'CONTEXT_RESPONSE') {
-            console.log('User:', response.payload.user);
-            console.log('Company:', response.payload.selected_company_name);
+
+let loadedActivity = null;
+
+/* -----------------------------
+   Generic Bridge Request
+----------------------------- */
+function sendBridgeRequest(command, payload = {}) {
+
+    return new Promise((resolve, reject) => {
+
+        const requestId =
+            command + "-" + Date.now();
+
+        function listener(event) {
+
+            const response = event.detail;
+
+            if (
+                response.requestId === requestId
+            ) {
+
+                window.removeEventListener(
+                    "fsmHostResponse",
+                    listener
+                );
+
+                if (response.success) {
+                    resolve(response);
+                } else {
+                    reject(response);
+                }
+            }
         }
+
+        window.addEventListener(
+            "fsmHostResponse",
+            listener
+        );
+
+        const request = {
+            apiVersion: 1,
+            apiKey: "your-api-key",
+            requestId,
+            command,
+            payload
+        };
+
+        window.fsmHost.postMessage(
+            JSON.stringify(request)
+        );
     });
-    
-    // Send a context request
-    const request = {
-        apiVersion: 1,
-        apiKey: 'your-api-key',  // Required if Authentication Key is configured on Web Container
-        requestId: 'context-' + Date.now(),
-        command: 'CONTEXT_REQUEST',
-        payload: {}
-    };
-    window.fsmHost.postMessage(JSON.stringify(request));
-    
-} else {
-    console.log('Bridge not available — running outside mobile app');
 }
+
+/* -----------------------------
+   Convert file to Base64
+----------------------------- */
+function blobToBase64(blob) {
+
+    return new Promise((resolve, reject) => {
+
+        const reader = new FileReader();
+
+        reader.onload = () => {
+            resolve(
+                reader.result.split(",")[1]
+            );
+        };
+
+        reader.onerror = reject;
+
+        reader.readAsDataURL(blob);
+
+    });
+}
+
+/* -----------------------------
+   Load Activity
+----------------------------- */
+async function loadActivity() {
+
+    const activityId =
+        document
+            .getElementById("activityId")
+            .value
+            .trim();
+
+    if (!activityId) {
+        alert("Please enter an Activity ID.");
+        return;
+    }
+
+    try {
+
+        setStatus(
+            "Loading activity...",
+            false
+        );
+
+        const response =
+            await sendBridgeRequest(
+                "ACTIVITY_GET",
+                {
+                    id: activityId
+                }
+            );
+
+        loadedActivity =
+            response.payload;
+
+        document.getElementById(
+            "activityInfo"
+        ).innerHTML = `
+            <h3>${loadedActivity.subject || "No Subject"}</h3>
+
+            <p>
+                <strong>Activity ID:</strong>
+                ${loadedActivity.id}
+            </p>
+
+            <p>
+                <strong>Status:</strong>
+                ${loadedActivity.status || "-"}
+            </p>
+
+            <p>
+                <strong>Customer:</strong>
+                ${loadedActivity.businessPartnerName || "-"}
+            </p>
+
+            <p>
+                <strong>Code:</strong>
+                ${loadedActivity.code || "-"}
+            </p>
+        `;
+
+        setStatus(
+            "Activity loaded successfully.",
+            false
+        );
+
+        console.log(
+            "Activity",
+            loadedActivity
+        );
+
+    } catch (error) {
+
+        console.error(error);
+
+        setStatus(
+            "Activity could not be loaded.",
+            true
+        );
+    }
+}
+
+/* -----------------------------
+   Upload Attachment
+----------------------------- */
+async function uploadPhoto() {
+
+    if (!loadedActivity) {
+        alert(
+            "Load an activity first."
+        );
+        return;
+    }
+
+    const file =
+        document
+            .getElementById("photoInput")
+            .files[0];
+
+    if (!file) {
+        alert(
+            "Please select a photo."
+        );
+        return;
+    }
+
+    try {
+
+        setStatus(
+            "Uploading photo...",
+            false
+        );
+
+        const base64 =
+            await blobToBase64(file);
+
+        const response =
+            await sendBridgeRequest(
+                "ATTACHMENT_ADD",
+                {
+                    fileName: file.name,
+                    fileContent: base64,
+                    object: {
+                        objectId:
+                            loadedActivity.id,
+                        objectType:
+                            "ACTIVITY"
+                    },
+                    title:
+                        "Photo uploaded from Mobile Extension"
+                }
+            );
+
+        console.log(
+            "Attachment response",
+            response
+        );
+
+        setStatus(
+            "Photo uploaded successfully.",
+            false
+        );
+
+        alert(
+            "Attachment created successfully."
+        );
+
+    } catch (error) {
+
+        console.error(error);
+
+        setStatus(
+            "Photo upload failed.",
+            true
+        );
+    }
+}
+
+/* -----------------------------
+   Status Message
+----------------------------- */
+function setStatus(
+    text,
+    isError
+) {
+
+    const el =
+        document.getElementById(
+            "status"
+        );
+
+    el.textContent = text;
+
+    el.className =
+        isError
+        ? "error"
+        : "success";
+}
+
+/* -----------------------------
+   Prefill current activity
+----------------------------- */
+async function prefillCurrentActivity() {
+
+    try {
+
+        if (
+            typeof window.fsmHost ===
+            "undefined"
+        ) {
+            console.log(
+                "Not running in FSM Mobile App"
+            );
+            return;
+        }
+
+        const response =
+            await sendBridgeRequest(
+                "CONTEXT_REQUEST",
+                {}
+            );
+
+        console.log(
+            "Context",
+            response.payload
+        );
+
+        const activityId =
+            response.payload
+                ?.business_object
+                ?.id;
+
+        if (activityId) {
+
+            document.getElementById(
+                "activityId"
+            ).value = activityId;
+
+            // Automatically load activity
+            loadActivity();
+        }
+
+    } catch (error) {
+
+        console.error(
+            "Could not load context",
+            error
+        );
+    }
+}
+
+/* -----------------------------
+   Event Listeners
+----------------------------- */
+document
+    .getElementById(
+        "loadActivityBtn"
+    )
+    .addEventListener(
+        "click",
+        loadActivity
+    );
+
+document
+    .getElementById(
+        "uploadBtn"
+    )
+    .addEventListener(
+        "click",
+        uploadPhoto
+    );
+
+document.addEventListener(
+    "DOMContentLoaded",
+    prefillCurrentActivity
+);
+
 </script>
 
 </body>
+</html>
